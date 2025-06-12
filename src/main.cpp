@@ -125,7 +125,7 @@ WiFiMulti wifiMulti;  // wifi access
 //******************************************* Help functions *********************************************************************
 
 /** 
- * @details This function is used to get the calibration factor for the load cell.  
+ *  @brif This function is used to get the calibration factor for the load cell.  
   *         The calibration factor is used to convert the raw reading from the load cell to the actual weight.
   *         The calibration factor is calculated by taking two readings from the load cell:
   *           - The first reading is taken with no weight on the scale (y1 = 0).
@@ -165,7 +165,7 @@ float getCalibrateFactor()
 
 
 /**
- * @details function is used to reset the display to show "----".
+ * @brief function is used to reset the display to show "----".
  *          It is called when the display needs to be cleared or reset.  
  * @para: This function does not take any parameters.
  * @note: This function is used to reset the display to show "----" on the 4 digits 7-segment display.
@@ -179,8 +179,8 @@ void resetDisplay()
 }
 
 /**
-* @details This function is used to get the current weight from the load cell.
- *         It checks if the scale is ready, sets the calibration factor, and gets the reading from the load cell. 
+  * @brief  This function is used to get the current weight from the load cell.
+  * @details       It checks if the scale is ready, sets the calibration factor, and gets the reading from the load cell. 
   *        If the reading is greater than the maximum scale value or less than or equal to zero, it returns zero.
   *        If the reading is within the valid range, it returns the reading. 
   * @para: This function does not take any parameters.
@@ -237,7 +237,7 @@ long  getWeight()
 
 /**
  * @brief This function is used to handle the web socket events.
- * @date It is called when a client connects, disconnects, or sends a message to the server.  
+ * @details  It is called when a client connects, disconnects, or sends a message to the server.  
  *       It handles the following events:
  *       - WStype_DISCONNECTED: When a client disconnects, it prints a message to the serial monitor. 
  *       - WStype_CONNECTED: When a client connects, it prints a message to the serial monitor.
