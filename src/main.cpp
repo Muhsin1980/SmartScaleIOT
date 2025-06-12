@@ -426,21 +426,29 @@ void Task4( void *pvParameters )
 void setup() 
 {
     // conenct to the available wifi using your AP name and password. 
-    WiFi.begin(AP_NAME,AP_PASS); // access wifi 
+
+        WiFi.begin(AP_NAME,AP_PASS);  
   
-    // set the speed to transfer data in the serial communication. 
+    //Serial initialization (speed = 115200).
     Serial.begin(115200);   // speed = 115200
   
     // 1- Initializing the display (4 digits 7 segment display) 
+    // The display is used to show the current weight.
+    // The display is initialized with the CLK_PIN and DIO_PIN defined above. 
     Serial.println("Initializing the LED display");
-    displayScale.init();
+    //
+    displayScale.init();  // initialize the display
+    // set the brightness of the display
     displayScale.setBrightness(5); // set the brightness (0:dimmest, 7:brightest) 
+    
 
     //2- Load cell setting and initilization 
     Serial.println("Initializing the scale");
     scaleReader.begin(DOUT_PIN,SCK_PIN);   
   
+    // set the calibration factor = 0 for the load cell
     scaleReader.set_scale();    //no calibration 
+    //Tare the scale to remove any weight on the scale.
     scaleReader.tare();         // removing any weight on the scale.
 
     // create a new semaphpre and check if it has been created.
@@ -450,7 +458,9 @@ void setup()
          Serial.println("Semaphore could not be created!");
     }
 
-   // wifi connection 
+    // wait for the WiFi connection to be established.
+    Serial.println("Connecting to WiFi...");
+     
     if(WiFi.status() != WL_CONNECTED) 
     {        
         Serial.println("..... Connecting.... \n");
@@ -458,29 +468,51 @@ void setup()
     }  
     
      // This is your local IP address. 
+     // You can use this IP address to access the web interface of the ESP32.
+     // It will be printed on the Serial Monitor after the ESP32 is connected to the WiFi network.
      Serial.print("IP address: ");
      Serial.println(WiFi.localIP());  // you need this IP to access to the web interface
     
     //3 start the web server and sockets.
+    Serial.println("Starting the web server and web socket");
+      // start the web server on port 80
+      // The web server will serve the HTML page defined in the "website" string variable.
+      // The web server will handle any client requests to the root path ("/").
+      // The web socket will handle any client requests to the path "/".    
+      
+
      server.on("/", []() {                               
      server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
       });
+      // start the web server on port 80.
       server.begin();                                     // start server  
       webSocket.begin();                                  // start websocket
       webSocket.onEvent(webSocketEvent);                  //What needs to be done at the server, where data received back from clients. 
    
     //4- Blynk interaction
-     //Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS);
-     // Blynck starts here. 
-     timer.setInterval(1000L, runBlynk); 
+      // Blynk is used to send the current weight to the Blynk cloud and display it on the Blynk app.
+      Serial.println("Starting Blynk Cloud");     
+      // Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS); // Blynk starts here.
+     //Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS, IPAddress(139,59,206,133), 8080);
+     
+  
+     //timer.setInterval(1000L, runBlynk); 
      //timer.setInterval(1000L, runBlynk);       
    
      //5- Creating different tasks(getting weight, displaying the current weight, web server and blynk interaction.
-      xTaskCreate(Task1, "get Weight", 10000, NULL, 1, &TaskHandle_1); // getting weight 
-      xTaskCreate(Task2, "Display 1", 10000,NULL, 1, &TaskHandle_2);  
-      xTaskCreate(Task3, "Web Server", 10000,NULL, 2, &TaskHandle_3);
-     // xTaskCreate(Task4, "Blynk Cloud", 10000,NULL,3, &TaskHandle_4);
+      Serial.println("Creating tasks");
+      // Create different tasks for getting weight, displaying weight, web server, and Blynk cloud interaction.
+      // The tasks are created with different priorities and stack sizes.
+      // Task1: getting weight
+      // Task2: displaying weight
+      // Task3: web server
+      // Task4: Blynk cloud interaction (commented out).
 
+     xTaskCreate(Task1, "get Weight", 10000, NULL, 1, &TaskHandle_1); // getting weight 
+     xTaskCreate(Task2, "Display 1", 10000,NULL, 1, &TaskHandle_2);  
+     xTaskCreate(Task3, "Web Server", 10000,NULL, 2, &TaskHandle_3);
+     // xTaskCreate(Task4, "Blynk Cloud", 10000,NULL,3, &TaskHandle_4);
+      // Blynk cloud interaction is commented out. You can uncomment it to use it.
       Serial.println("....Starting .... \n");  
 }
 
