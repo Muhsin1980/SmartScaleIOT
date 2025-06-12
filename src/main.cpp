@@ -17,9 +17,6 @@
 
 // libraries needed for the project
 #include <Arduino.h>            // Arduino library    
-#include <BlynkSimpleEsp32.h>  // Blynk library for ESP32
-
-
 #include<WiFiMulti.h>            // WiFiMulti library to connect to multiple WiFi networks 
 #include<WiFi.h>                 // WiFi library to connect to WiFi networks
 #include <TM1637.h>              // 4 digits 7-segment display library
@@ -40,10 +37,11 @@
 #define BLYNK_TEMPLATE_NAME "Muhsin"
 #define BLYNK_AUTH_TOKEN    "0U5MXMqH_NVYl6XEhvD7EyDtZoQxAXmD"
 #define BLYNK_PRINT Serial
-
+#include <BlynkSimpleEsp32.h>  // Blynk library for ESP32
 /* 
   The basic HTML page to show the current weight and tare the scale, when needed. 
-  The whole html is contained in a string variable called "website". 
+  The whole html is contained (compressed) in a string variable called "website". 
+  https://www.textfixer.com/html/compress-html-compression.php
   We can use this string variable to send the HTML page to the client when requested.
   If you want to change the HTML page, you can change the string variable "website".
   The HTML page contains a button to tare the scale and a span to display the current weight.
@@ -53,7 +51,10 @@
   The button with id "BTN_SEND_BACK" will send a message to the server to tare the scale. 
   The span will display the current weight received from the server.
   This is a simple web interface to interact with the scale. However, you can design your own web interface 
-  using seperate HTML, CSS, and JavaScript files, for real projects, to build better web pages.
+  using seperate HTML, CSS, and JavaScript files, for real projects, to build better web pages. We can also 
+  use JSON to create  a more complex web interface with more features. I could even have a chat graph to show
+  the current weight over time. However, as this is a simple demo, I will use a simple HTML page to show the 
+  current weight and tare the scale.
   */
 String website = "<!DOCTYPE html><html><head><title>SmartScaleMeasuring</title></head><body style='background-color: #EEEEEE;'><span style='color: #003366;'><h1>Displaying the Current Weight</h1><p>The current Weight is: <span id='rand'>-</span></p><p><button type='button' id='BTN_SEND_BACK'>Taring the Scale (Zeroing the Scale)</button></p></span></body><script> var Socket; document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back); function init() { Socket = new WebSocket('ws://' + window.location.hostname + ':81/'); Socket.onmessage = function(event) { processCommand(event); }; } function button_send_back() { Socket.send('Taring the Scale'); } function processCommand(event) { document.getElementById('rand').innerHTML = event.data; console.log(event.data); } window.onload = function(event) { init(); }</script></html>";
 
@@ -85,7 +86,7 @@ WebSocketsServer webSocket = WebSocketsServer(81);    // the websocket uses port
 #define AP_PASS "Omidmuhsin2015"  // AP password 
 
 // FreeRTOS tasks and semaphore configuration
-
+// We will create 4 tasks to handle the different functionalities of the application.
 TaskHandle_t TaskHandle_1;  // get weight task 
 TaskHandle_t TaskHandle_2;  // display weight task 
 TaskHandle_t TaskHandle_3;  // web server task
@@ -103,7 +104,6 @@ HX711 scaleReader;
 
 // Blynk timer object to run the Blynk cloud interaction
 // BlynkTimer is used to run the Blynk cloud interaction every second
-
 BlynkTimer timer;
 
 // Calibration factor for the load cell
@@ -152,24 +152,38 @@ WiFiMulti wifiMulti;  // wifi access
 float getCalibrateFactor()
 {
   // Step1: get raw reading with no scale factor set.
-   // weight is 0 
-    Serial.println("Do not put any weight");
-    scaleReader.set_scale();    //no calibration 
-    scaleReader.tare();    // removing weight on the scale
-    float raw_reading1 = scaleReader.read_average(10); // zero weight reading 
-    delay(5000);
-    Serial.println("Put on your weight ");
-    // my known weight is 50.0g
-
-    float myWeight = 50.0; //y2, y1 =0.
-   // step 2: get another raw reading when your weight is on the scale 
-    float raw_reading2 = scaleReader.read_average(10); //x2
-    delay(5000);
-    // factor = (y2 - y1) / (x2 - x1)
-    float calibration_factor = (myWeight - 0.0)/(raw_reading2-raw_reading1);
-    return calibration_factor;
-  
+  // weight is 0 
+  Serial.println("Do not put any weight");
+  scaleReader.set_scale();    //no calibration 
+  scaleReader.tare();    // removing weight on the scale
+  float raw_reading1 = scaleReader.read_average(10); // zero weight reading 
+  delay(5000);
+  Serial.println("Put on your weight ");
+  // my known weight is 50.0g
+  float myWeight = 50.0; //y2, y1 =0.
+  // step 2: get another raw reading when your weight is on the scale 
+  float raw_reading2 = scaleReader.read_average(10); //x2
+  delay(5000);
+  // factor = (y2 - y1) / (x2 - x1)
+  float calibration_factor = (myWeight - 0.0)/(raw_reading2-raw_reading1);
+  return calibration_factor;  
 }
+
+
+/**
+ * This function is used to reset the display to show "----".
+ * It is called when the display needs to be cleared or reset.  
+ * @para: This function does not take any parameters.
+ * @note: This function is used to reset the display to show "----" on the 4 digits 7-segment display.
+ * It is called when the display needs to be cleared or reset.
+ * It is used to ensure that the display is clear before showing the current weight.
+ * 
+ */
+void resetDisplay()
+{
+    displayScale.display("----"); // reset display
+}
+
 
 /**
 *   This function is used to get the current weight from the load cell.
@@ -180,35 +194,57 @@ float getCalibrateFactor()
   *   
   * @return: The current weight as a long value.
   * @note: This function assumes that the load cell is connected to the ESP32 using the HX711 library.
+  *        If you an expected weight (less than 0) for a long time, then you can reset the ESP32. 
+  *        After resetin, You should see the expected weight on the display and the serial monitor. 
  */
 
 long  getWeight()
 {  
-    // is scale ready?
-    if (scaleReader.is_ready()) 
-      {         
-          // set calibration factor  
-          // This value just works fine for m in this demo and 
-          // then it has been usd to get the well know weights. 
-          // calibration factor = getCalibrationFactor()        
-          scaleReader.set_scale(calibration_factor);
-          // get reading from the load cell          
-          long gram_reading = scaleReader.get_units();
-          Serial.println(""); 
-          Serial.print("Reading: ");
-          Serial.println(gram_reading); 
-          // reading must be less than max scale value.
-          if ( (gram_reading > maxScaleValue) || (gram_reading <0) )
-              return 0;                       // overweight 
-          else  
-              return gram_reading;           // return the reading 
-      } 
-      else 
+  // is scale ready?
+  if (scaleReader.is_ready()) 
+  {          
+    // set calibration factor  
+    // This value just works fine for m in this demo and 
+    // then it has been usd to get the well know weights. 
+    // calibration factor = getCalibrationFactor()        
+    scaleReader.set_scale(calibration_factor);
+    // get reading from the load cell          
+    long gram_reading = scaleReader.get_units();
+    Serial.println(""); 
+    Serial.print("Reading: ");
+    Serial.println(gram_reading); 
+    // reading must be less than max scale value.
+    if ( (gram_reading > maxScaleValue) || (gram_reading <0) )
       {
-          Serial.println("Scale is not ready yet...");
-          delay(1000); 
-          return 0;
-      } 
+        Serial.println("Overweight!"); // if the reading is greater than the max scale value, then it is overweight.
+        resetDisplay();                // reset the display to show "----"
+        displayScale.display("----");  // display "----" on the display
+        Serial.println("Resetting the display to show ----");
+        delay(1000);                   // wait for 1 second      
+        return 0;                       // overweight 
+      }
+    else
+      {
+        // if the reading is within the valid range, then return the reading.                  
+        return gram_reading;           // return the reading 
+      }
+  } 
+  else 
+  {
+    // if the scale is not ready, then return 0
+    // This means that the scale is not ready to read the weight.
+    // It could be due to a bad connection or the scale is not powered on.
+    // You can check the connections and power supply to the scale.
+    // If the scale is not ready, then return 0.
+    resetDisplay(); // reset display
+    displayScale.display("----"); // display "----" on the display  
+    // print a message to the serial monitor to indicate that the scale is not ready. 
+    Serial.println("Scale is not ready yet...");
+    // wait for 1 second before returning again. 
+    delay(1000); 
+    // return 0 to indicate that the scale is not ready.
+    return 0;
+  } 
 }
 
 /**
@@ -232,8 +268,14 @@ long  getWeight()
  */
 
 void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length) 
-{      
-  switch (type) {                                   
+{     
+  // check the type of event that occurred
+  // and handle it accordingly. 
+  switch (type) {    
+    // handle the different types of events
+    case WStype_ERROR:          // if there is an error, then type == WStype_ERROR
+      Serial.println("Error on client " + String(num));
+      break;                                 
     case WStype_DISCONNECTED:   // if a client is disconnected, then type == WStype_DISCONNECTED
       Serial.println("Client " + String(num) + " disconnected");
       break;
@@ -242,30 +284,18 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length)
       // optionally you can add code here what to do when connected
       break;
     case WStype_TEXT:                          
-        // Client send request to tare the scale( we assume we only have one button)
-        // we could receive different data. 
-        Serial.println("Client " + String(num) + "requesting to tare the scale");
-        scaleReader.tare();
-       Serial.println("Taring done:)");
+      // Client send request to tare the scale( we assume we only have one button)
+      // we could receive different data. 
+      // if the payload is "Taring the Scale", then tare the scale.  
+      // if we receive any other data, we can handle it accordingly.
+      // This could be the case when we have multiple buttons or actions.                
+      Serial.println("Client " + String(num) + "requesting to tare the scale");
+      scaleReader.tare(); // tare the scale
+      Serial.println("Taring done:)");
       break;
   }
 }
 
-
-/**
- * This function is used to reset the display to show "----".
- * It is called when the display needs to be cleared or reset.  
- * @para: This function does not take any parameters.
- * @note: This function is used to reset the display to show "----" on the 4 digits 7-segment display.
- * It is called when the display needs to be cleared or reset.
- * It is used to ensure that the display is clear before showing the current weight.
- * 
- */
-
-void resetDisplay()
-{
-    displayScale.display("----"); // reset display
-}
 
 /**
  * This function is used to display the current weight on the 4 digits 7-segment display.
@@ -278,10 +308,12 @@ void resetDisplay()
  */
 void displayWeight(long weightVal)
 {       
-        // reset the display first so that we can have a clear display.
-        // when digit is not displayed, it is assumed to be "-". 
-        resetDisplay();
-        displayScale.display(weightVal);
+    // reset the display first so that we can have a clear display.
+    // when digit is not displayed, it is assumed to be "-". 
+    // This is done to ensure that the display is clear before showing the current weight.
+    Serial.println("Displaying the current weight on the display"); 
+    resetDisplay();
+    displayScale.display(weightVal);
 }
 
 //*********************************************************************************************** Blynk Cloud ******************************
@@ -295,8 +327,12 @@ void displayWeight(long weightVal)
  *  */
 void runBlynk()
 {
-  Blynk.virtualWrite(V0,currentWeight); 
-  Blynk.virtualWrite(V1,currentWeight);
+  // send the current weight to the Blynk cloud using virtual pins V0 and V1
+  Serial.println("Sending the current weight to the Blynk cloud");  
+  Blynk.virtualWrite(V0,currentWeight);   // send the current weight to the Blynk cloud using virtual pin V0    
+  Blynk.virtualWrite(V1,currentWeight);  // send the current weight to the Blynk cloud using virtual pin V1
+  Serial.println("Current weight sent to the Blynk cloud"); 
+  //wait for 1 second before sending the next weight. 
   delay(1000); 
 }
 
@@ -315,12 +351,17 @@ void Task1( void *pvParameters )
 {  
   while (1)
   {  
-      // taking the semaphore 
-      xSemaphoreTake(semaphore,portMAX_DELAY);    
-      currentWeight = getWeight();   // current weight 
-      //releasing the semaphore. 
-      xSemaphoreGive(semaphore);  
-      vTaskDelay(500/ portTICK_PERIOD_MS); // poll over 500ms, as requested. 
+    // taking the semaphore 
+    xSemaphoreTake(semaphore,portMAX_DELAY);    
+    // get the current weight from the load cell 
+    // if the scale is not ready, then it will return 0.
+    // if the scale is ready, then it will return the current weight.
+    Serial.println("Task1:Getting the current weight from the load cell");
+    currentWeight = getWeight();   // current weight 
+    //releasing the semaphore. 
+    xSemaphoreGive(semaphore);  
+    // wait for 500 milliseconds before getting the next weight.
+    vTaskDelay(500/ portTICK_PERIOD_MS); // poll over 500ms, as requested. 
   }
 }
 
@@ -340,39 +381,61 @@ void Task2( void *pvParameters )
 {  
    while(1)
   { 
-      // taking the semaphore 
-       xSemaphoreTake(semaphore,portMAX_DELAY);
-       Serial.println("Task2");
-       Serial.println(currentWeight); 
-       displayWeight(currentWeight);   
-       //releasing the semaphore.  
-       xSemaphoreGive(semaphore); 
-       vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per (n) second.
+    // taking the semaphore 
+    xSemaphoreTake(semaphore,portMAX_DELAY);
+    // display the current weight on the display
+    Serial.println("Task2: Displaying the current weight on the display");
+    // if the current weight is 0, then display "----" on the display
+    displayWeight(currentWeight);   
+    // if the current weight is greater than 0, then display the current weight on the display
+    // wait for 1 second before displaying the next weight.
+    // The semaphore is released after displaying the weight to allow other tasks to access the shared resource.
+    //releasing the semaphore.  
+    xSemaphoreGive(semaphore); 
+    // wait for 1 second before displaying the next weight.
+    vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per (n) second.
   }  
 }
 
 /**
- * Task3: runs web server 
- * Web server is ready for any client requests, if there is any. 
- * Web UI is used to display the current weight or tare the scale
- * This web interface (client) can be accessed using this IP address of the server. 
- * After program is excuted, you can see the IP address from the Serial Monitor.  
- * Copy this IP address and paste it into your browser. 
- */
+ * Task3: This task is used to run the web server.
+ * It takes the semaphore to ensure that only one task can access the web server at a time.
+ * It handles the web server requests and sends the current weight to the web clients.
+ * 
+ * * @para: This task does not take any parameters.
+ * * @note: This task runs every second to handle the web server requests and send the current weight to the
+ *           web clients. It is used to ensure that the web server is running and broadcasting the current 
+ *           weight to the clients.
+ *  
+ * */
 void Task3( void *pvParameters )
 {   
   while (1)
   {
-      // taking the semaphore 
-      xSemaphoreTake(semaphore,portMAX_DELAY);
-      Serial.println("Task3");
-      String str = String(currentWeight);     // get the current weight
-      int str_len = str.length() + 1;         // convert this number into an array of chars.           
-      char char_array[str_len];           
-      str.toCharArray(char_array, str_len);   // convert to char array
-      webSocket.broadcastTXT(char_array);     // send char_array to clients(broadcast). 
-      xSemaphoreGive(semaphore);  //releasing the semaphore. 
-      vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per 1 second.
+    // taking the semaphore 
+    // This is used to ensure that only one task can access the web server at a time.
+    // This is done to avoid any conflicts between the tasks that access the web server.  
+    Serial.println("Task3: Running the web server");
+    // handle the web server requests 
+    xSemaphoreTake(semaphore,portMAX_DELAY);
+    // convert the current weight to a string and send it to the web clients.
+    // This is done to update the current weight on the web interface.
+    // Note: This is not the best way to convert the current weight to a string,
+    // but it is a simple way to do it.
+    // for better performance, you can use a buffer to store the string and then send it to the web clients.
+    // This is done to ensure that the web clients receive the current weight in a string format.
+    String str = String(currentWeight);     // get the current weight
+    int str_len = str.length() + 1;         // convert this number into an array of chars.           
+    char char_array[str_len];       
+    //send the current weight to the web clients
+    // The current weight is converted to a char array and sent to the web clients.    
+    str.toCharArray(char_array, str_len);   // convert to char array
+    webSocket.broadcastTXT(char_array);     // send char_array to clients(broadcast). 
+    // give the semaphore to allow other tasks to access the shared resource.
+    Serial.println("Task3: Web server is running and broadcasting the current weight to the clients");
+    xSemaphoreGive(semaphore);  //releasing the semaphore. 
+    // wait for 1 second before running the web server again.
+    vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per 1 second.
   }
 }
 
@@ -381,30 +444,33 @@ void Task3( void *pvParameters )
  * It takes the semaphore to ensure that only one task can access the Blynk cloud at a time.      
  * It sends the current weight to the Blynk cloud using virtual pins V0 and V1.
  * It releases the semaphore after sending the weight.  
- * * @para: This task does not take any parameters.
+ * @para: This task does not take any parameters.
  * @note: This task runs every second to send the current weight to the Blynk cloud.
  * It is used to ensure that the current weight is updated frequently and accurately on the Blynk cloud.
  * The Blynk cloud is used to display the current weight over time (5 seconds).     
- * This task is commented out in the setup function, but you can uncomment it to use it.
- * 
- * 
- * @note:
  * This task requires a Blynk account and a template to be created before using it.
  * You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token.                     
  * 
  * 
  */
-void Task4( void *pvParameters )
+void Task4(void *pvParameters )
 {   
   while (1)
   {
     // this task take the semaphore 
-     xSemaphoreTake(semaphore,portMAX_DELAY);
-     Serial.println("Task4");
-     //Blynk.run();
-     //timer.run();
-     xSemaphoreGive(semaphore);  //releasing the semaphore. 
-     vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per (n) second.
+    Serial.println("Task4: Running the Blynk cloud interaction");
+    // This is used to ensure that only one task can access the Blynk cloud at a time.
+    // This is done to avoid any conflicts between the tasks that access the Blynk cloud.
+    xSemaphoreTake(semaphore,portMAX_DELAY);
+    Serial.println("Task4: Blynk cloud interaction is running and sending the current weight to the Blynk cloud");
+    // run the Blynk cloud interaction 
+    Blynk.run();
+    // start the Blynk timer to run the Blynk cloud interaction every second
+    timer.run();
+    // give the semaphore to allow other tasks to access the shared resource.
+    xSemaphoreGive(semaphore);  //releasing the semaphore. 
+    // wait for 1 second before running the Blynk cloud interaction again.
+    vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per (n) second.
   }
 }
 
@@ -425,95 +491,113 @@ void Task4( void *pvParameters )
  */
 void setup() 
 {
-    // conenct to the available wifi using your AP name and password. 
-
-        WiFi.begin(AP_NAME,AP_PASS);  
+  // conenct to the available wifi using your AP name and password. 
+  // This is done to connect the ESP32 to the WiFi network.
+  Serial.println("Connecting to WiFi..."); // print a message to the serial monitor to indicate that the ESP32 is connecting to the WiFi network.
+  // WiFi.begin() function is used to connect the ESP32 to the WiFi network.
+  WiFi.begin(AP_NAME,AP_PASS);  
   
-    //Serial initialization (speed = 115200).
-    Serial.begin(115200);   // speed = 115200
+  //Serial initialization (speed = 115200).
+  // This is used to print messages to the serial monitor for debugging purposes.
+  // Serial.begin() function is used to initialize the serial communication with the ESP32.
+  // The serial communication is used to print messages to the serial monitor for debugging purposes.
+  // The serial communication is initialized with a baud rate of 115200.  
+  Serial.begin(115200);   
   
-    // 1- Initializing the display (4 digits 7 segment display) 
-    // The display is used to show the current weight.
-    // The display is initialized with the CLK_PIN and DIO_PIN defined above. 
-    Serial.println("Initializing the LED display");
-    //
-    displayScale.init();  // initialize the display
-    // set the brightness of the display
-    displayScale.setBrightness(5); // set the brightness (0:dimmest, 7:brightest) 
+  // 1- Initializing the display (4 digits 7 segment display) 
+  // The display is used to show the current weight.
+  // The display is initialized with the CLK_PIN and DIO_PIN defined above. 
+  Serial.println("Initializing the LED display");
+  // initialize the display with the CLK_PIN and DIO_PIN
+  displayScale.init();  // initialize the display
+  // set the brightness of the display
+  displayScale.setBrightness(5); // set the brightness (0:dimmest, 7:brightest) 
     
-
-    //2- Load cell setting and initilization 
-    Serial.println("Initializing the scale");
-    scaleReader.begin(DOUT_PIN,SCK_PIN);   
+  //2- Load cell setting and initilization 
+  Serial.println("Initializing the scale");
+  scaleReader.begin(DOUT_PIN,SCK_PIN);   
   
-    // set the calibration factor = 0 for the load cell
-    scaleReader.set_scale();    //no calibration 
-    //Tare the scale to remove any weight on the scale.
-    scaleReader.tare();         // removing any weight on the scale.
+  // set the calibration factor = 0 for the load cell
+  scaleReader.set_scale();    //no calibration 
+  //Tare the scale to remove any weight on the scale.
+  // Taring the scale means removing any weight on the scale and setting the current weight to zero.
+  // This is done to ensure that the scale starts from zero when there is no weight on it.  
+  // Taring the scale is done by calling the tare() function of the HX711 library.
+  // This function will set the current weight to zero and remove any weight on the scale.  
+  scaleReader.tare();         
 
-    // create a new semaphpre and check if it has been created.
-    semaphore = xSemaphoreCreateMutex();
-    if (semaphore == NULL)
-    {
-         Serial.println("Semaphore could not be created!");
-    }
+  // create a new semaphpre and check if it has been created.
+  semaphore = xSemaphoreCreateMutex();
+  if (semaphore == NULL)
+  {
+    Serial.println("Semaphore could not be created!");
+  }
 
-    // wait for the WiFi connection to be established.
-    Serial.println("Connecting to WiFi...");
-     
-    if(WiFi.status() != WL_CONNECTED) 
-    {        
-        Serial.println("..... Connecting.... \n");
-        delay(1000);   
-    }  
+  // wait for the WiFi connection to be established.
+  Serial.println("Connecting to WiFi...");
+  if(WiFi.status() != WL_CONNECTED) 
+  {        
+    Serial.println("..... Connecting.... \n");
+    delay(1000);   
+  }  
     
-     // This is your local IP address. 
-     // You can use this IP address to access the web interface of the ESP32.
-     // It will be printed on the Serial Monitor after the ESP32 is connected to the WiFi network.
-     Serial.print("IP address: ");
-     Serial.println(WiFi.localIP());  // you need this IP to access to the web interface
+  // This is your local IP address. 
+  // You can use this IP address to access the web interface of the ESP32.
+  // It will be printed on the Serial Monitor after the ESP32 is connected to the WiFi network.
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());  // you need this IP to access to the web interface
     
-    //3 start the web server and sockets.
-    Serial.println("Starting the web server and web socket");
-      // start the web server on port 80
-      // The web server will serve the HTML page defined in the "website" string variable.
-      // The web server will handle any client requests to the root path ("/").
-      // The web socket will handle any client requests to the path "/".    
-      
-
-     server.on("/", []() {                               
-     server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
+  //3 start the web server and sockets.
+  Serial.println("Starting the web server and web socket");
+  // start the web server on port 80
+  // The web server will serve the HTML page defined in the "website" string variable.
+  // The web server will handle any client requests to the root path ("/").
+  // The web socket will handle any client requests to the path "/".  
+  server.on("/", []() {                               
+  server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
       });
-      // start the web server on port 80.
-      server.begin();                                     // start server  
-      webSocket.begin();                                  // start websocket
-      webSocket.onEvent(webSocketEvent);                  //What needs to be done at the server, where data received back from clients. 
-   
-    //4- Blynk interaction
-      // Blynk is used to send the current weight to the Blynk cloud and display it on the Blynk app.
-      Serial.println("Starting Blynk Cloud");     
-      // Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS); // Blynk starts here.
-     //Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS, IPAddress(139,59,206,133), 8080);
-     
   
-     //timer.setInterval(1000L, runBlynk); 
-     //timer.setInterval(1000L, runBlynk);       
-   
-     //5- Creating different tasks(getting weight, displaying the current weight, web server and blynk interaction.
-      Serial.println("Creating tasks");
-      // Create different tasks for getting weight, displaying weight, web server, and Blynk cloud interaction.
-      // The tasks are created with different priorities and stack sizes.
-      // Task1: getting weight
-      // Task2: displaying weight
-      // Task3: web server
-      // Task4: Blynk cloud interaction (commented out).
+  server.begin();   
+  Serial.println("Web server started on port 80"); // print the web server started message on the Serial Monitor                                 
+  // start the web socket on port 81.
+  webSocket.begin();    
+  webSocket.onEvent(webSocketEvent);                 // set the web socket event handler to handle client requests.
+  Serial.println("Web socket started on port 81");   // print the web socket started message on the Serial Monitor
+  // The webSocket.onEvent(webSocketEvent) function is used to set the event handler for the web socket.
+  // This function will be called when a client connects, disconnects, or sends a message to the server.  
+  webSocket.onEvent(webSocketEvent);                  //What needs to be done at the server, where data received back from clients. 
+  
+  //4- Blynk interaction
+  // Blynk is used to send the current weight to the Blynk cloud and display it on the Blynk app.
+  Serial.println("Starting Blynk Cloud");     
+  // Blynk.begin() function is used to start the Blynk cloud interaction.
+  // You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token.   
+  // You can get the BLYNK_AUTH_TOKEN from the Blynk app after creating a template.
+  // Blynk.begin() function takes the BLYNK_AUTH_TOKEN, AP_NAME, and AP_PASS as parameters.       
+  // Blynk.begin() function will connect the ESP32 to the Blynk cloud and start the Blynk cloud interaction.
+   Blynk.begin(BLYNK_AUTH_TOKEN, AP_NAME, AP_PASS); // Blynk starts here.
 
-     xTaskCreate(Task1, "get Weight", 10000, NULL, 1, &TaskHandle_1); // getting weight 
-     xTaskCreate(Task2, "Display 1", 10000,NULL, 1, &TaskHandle_2);  
-     xTaskCreate(Task3, "Web Server", 10000,NULL, 2, &TaskHandle_3);
-     // xTaskCreate(Task4, "Blynk Cloud", 10000,NULL,3, &TaskHandle_4);
-      // Blynk cloud interaction is commented out. You can uncomment it to use it.
-      Serial.println("....Starting .... \n");  
+  // BlynkTimer is used to run the Blynk cloud interaction every second.  
+  // The timer.setInterval() function takes the interval in milliseconds and the function to be called as parameters.   
+  timer.setInterval(1000L, runBlynk); 
+   
+  //5- Creating different tasks(getting weight, displaying the current weight, web server and blynk interaction.
+   Serial.println("Creating tasks");
+  // Create different tasks for getting weight, displaying weight, web server, and Blynk cloud interaction.
+  // The tasks are created with different priorities and stack sizes.
+  // Task1: getting weight
+  // Task2: displaying weight
+  // Task3: web server
+  // Task4: Blynk cloud interaction (commented out).
+
+  xTaskCreate(Task1, "get Weight", 10000, NULL, 1, &TaskHandle_1); // getting weight 
+  xTaskCreate(Task2, "Display 1", 10000,NULL, 1, &TaskHandle_2);  
+  xTaskCreate(Task3, "Web Server", 10000,NULL, 2, &TaskHandle_3);
+  xTaskCreate(Task4, "Blynk Cloud", 10000,NULL,3, &TaskHandle_4);
+  // Blynk cloud interaction is commented out. You can uncomment it to use it.
+
+  // Starting the demo and run the tasks.
+  Serial.println("....Starting the demo .... \n");  
 }
 
 //**************************************************************************** main function (loop) *****************************************************
@@ -530,9 +614,12 @@ void setup()
  */
 void loop() 
 {   
-   // run server forever. 
-   server.handleClient();  // webserver methode that handles all Client
-   // loop the sokets for any communication. 
-   webSocket.loop();   
+  // run server forever. 
+  // This function handles the web server and web socket events.
+  // It is called continuously in the main loop to handle any client requests to the web server.
+  // It calls the server.handleClient() function to handle any client requests to the web server.
+  // It also calls the webSocket.loop() function to handle any web socket events. 
+  server.handleClient();  // webserver methode that handles all Client
+  webSocket.loop();   
 }
-// end of demo 
+// This is the end of the main function (loop) and the end of the program.
