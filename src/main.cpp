@@ -1,6 +1,6 @@
 /**
- * Smart Scale IOT
- *  * This is a simple smart scale application that uses ESP32 and HX711 to measure weight.
+ * Smart Scale IoT Project
+ *  This is a simple smart scale application that uses ESP32 and HX711 to measure weight.
  * It uses a load cell to measure the weight and a 4 digits 7-segment display to show the weight.
  * It displays the current weight on a 4 digits 7-segment display and sends the weight to the Blynk cloud.  
  * It also provides a simple web interface to display the current weight and tare the scale.
@@ -31,13 +31,15 @@
 // Blynk Cloud configuration
 // Blynk Cloud is used to send the current weight to the Blynk cloud and display it on the Blynk app.   
 // You need to create a Blynk account and a template to use this feature.
-// To use Blynk, you need to install the Blynk library in your Arduino IDE.     
+// To use Blynk, you need to install the Blynk library in your PltformIO.     
 // Blyn Cloud template id and name 
 #define BLYNK_TEMPLATE_ID   "TMPL54GiWGKuC"
 #define BLYNK_TEMPLATE_NAME "Muhsin"
 #define BLYNK_AUTH_TOKEN    "0U5MXMqH_NVYl6XEhvD7EyDtZoQxAXmD"
 #define BLYNK_PRINT Serial
-#include <BlynkSimpleEsp32.h>  // Blynk library for ESP32
+// Include the Blynk library for ESP32
+// @note If I moved this to above, I will get an error.
+#include <BlynkSimpleEsp32.h>  // Blynk library for ESP32. 
 /* 
   The basic HTML page to show the current weight and tare the scale, when needed. 
   The whole html is contained (compressed) in a string variable called "website". 
@@ -48,12 +50,11 @@
   The button will send a message to the server to tare the scale, and the server will respond 
   with the current weight.
   The span with id "rand" will be updated with the current weight received from the server.
-  The button with id "BTN_SEND_BACK" will send a message to the server to tare the scale. 
-  The span will display the current weight received from the server.
-  This is a simple web interface to interact with the scale. However, you can design your own web interface 
+  
+  @note This is a simple web interface to interact with the scale. However, we can design our own web interface 
   using seperate HTML, CSS, and JavaScript files, for real projects, to build better web pages. We can also 
-  use JSON to create  a more complex web interface with more features. I could even have a chat graph to show
-  the current weight over time. However, as this is a simple demo, I will use a simple HTML page to show the 
+  use JSON to create a more complex web interface with more features. I could even have a chat graph to show
+  the current weight over time. However, as this is a simple demo, I decided to use a simple HTML page to show the 
   current weight and tare the scale.
   */
 String website = "<!DOCTYPE html><html><head><title>SmartScaleMeasuring</title></head><body style='background-color: #EEEEEE;'><span style='color: #003366;'><h1>Displaying the Current Weight</h1><p>The current Weight is: <span id='rand'>-</span></p><p><button type='button' id='BTN_SEND_BACK'>Taring the Scale (Zeroing the Scale)</button></p></span></body><script> var Socket; document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back); function init() { Socket = new WebSocket('ws://' + window.location.hostname + ':81/'); Socket.onmessage = function(event) { processCommand(event); }; } function button_send_back() { Socket.send('Taring the Scale'); } function processCommand(event) { document.getElementById('rand').innerHTML = event.data; console.log(event.data); } window.onload = function(event) { init(); }</script></html>";
@@ -94,12 +95,11 @@ TaskHandle_t TaskHandle_4;  // Blyn Task
 SemaphoreHandle_t semaphore; 
 const int shared_resource = 3; 
 
-/// @brief HX711 scale reader object
-// HX711 scale reader object to read the load cell
-// HX711 is a library to read the load cell using the HX711 chip
+// HX711 scale reader object
+// Defining a scale reader object to read the load cell
+// This variable reads the load cell using the HX711 chip
 // HX711 is a chip that converts the analog signal from the load cell to a 
 // digital signal that can be read by the ESP32
-// HX711 is used to read the load cell and get the weight
 HX711 scaleReader;
 
 // Blynk timer object to run the Blynk cloud interaction
@@ -124,30 +124,24 @@ WiFiMulti wifiMulti;  // wifi access
 
 //******************************************* Help functions *********************************************************************
 
-/**
-// 
- * @Desc: This function is used to get the calibration factor for the load cell.  
-  *        The calibration factor is used to convert the raw reading from the load cell to the actual weight.
-  *        The calibration factor is calculated by taking two readings from the load cell:
-  *         - The first reading is taken with no weight on the scale (y1 = 0).
-  *        - The second reading is taken with a known weight on the scale (y2 = 50.0g).
+/** 
+ * @details This function is used to get the calibration factor for the load cell.  
+  *         The calibration factor is used to convert the raw reading from the load cell to the actual weight.
+  *         The calibration factor is calculated by taking two readings from the load cell:
+  *           - The first reading is taken with no weight on the scale (y1 = 0).
+  *           - The second reading is taken with a known weight on the scale (y2 = 50.0g).
   *        The calibration factor is then calculated using the formula:
   *        calibration_factor = (y2 - y1) / (x2 - x1)
-  *       where:          
-  *       - y1 is the first reading (0.0g)
-  *      - y2 is the second reading (50.0g)
-  *      - x1 is the first raw reading (raw_reading1)
-  *     - x2 is the second raw reading (raw_reading2)
-  *       The function returns the calibration factor as a float value.
-  *       Note: This function assumes that the load cell is connected to the ESP32 using the HX711 library.
-  *       The calibration factor is used to convert the raw reading from the load cell to the actual weight.
-  *     The calibration factor is a float value that is used to scale the raw reading from the load cell.
-  * 
-  * @para: This function does not take any parameters.
-  *   
-  * @return: The calibration factor as a float value.
-
- */
+  *        where:          
+  *           - y1 is the first reading (0.0g)
+  *           - y2 is the second reading (50.0g)
+  *           - x1 is the first raw reading (raw_reading1)
+  *           - x2 is the second raw reading (raw_reading2)
+  *        The function returns the calibration factor as a float value.
+  *@note: This function assumes that the load cell is connected to the ESP32 using the HX711 library.
+  *@para: This function does not take any parameters.  
+  *@return: The calibration factor as a float value.
+ **/
 
 float getCalibrateFactor()
 {
@@ -171,31 +165,29 @@ float getCalibrateFactor()
 
 
 /**
- * This function is used to reset the display to show "----".
- * It is called when the display needs to be cleared or reset.  
+ * @details function is used to reset the display to show "----".
+ *          It is called when the display needs to be cleared or reset.  
  * @para: This function does not take any parameters.
  * @note: This function is used to reset the display to show "----" on the 4 digits 7-segment display.
- * It is called when the display needs to be cleared or reset.
- * It is used to ensure that the display is clear before showing the current weight.
- * 
+ *        It is called when the display needs to be cleared or reset.
+ *        It is used to ensure that the display is clear before showing the current weight.
  */
 void resetDisplay()
-{
-    displayScale.display("----"); // reset display
+{   
+    // This function is used to reset the display to show "----"
+    displayScale.display("----"); 
 }
 
-
 /**
-*   This function is used to get the current weight from the load cell.
- * It checks if the scale is ready, sets the calibration factor, and gets the reading from the load cell. 
-  * If the reading is greater than the maximum scale value or less than or equal to zero, it returns zero.
-  * If the reading is within the valid range, it returns the reading. 
+* @details This function is used to get the current weight from the load cell.
+ *         It checks if the scale is ready, sets the calibration factor, and gets the reading from the load cell. 
+  *        If the reading is greater than the maximum scale value or less than or equal to zero, it returns zero.
+  *        If the reading is within the valid range, it returns the reading. 
   * @para: This function does not take any parameters.
-  *   
   * @return: The current weight as a long value.
   * @note: This function assumes that the load cell is connected to the ESP32 using the HX711 library.
-  *        If you an expected weight (less than 0) for a long time, then you can reset the ESP32. 
-  *        After resetin, You should see the expected weight on the display and the serial monitor. 
+  *        If you see an unexpected weight (less than 0) for a long time, then you can reset the ESP32 chip. 
+  *        After this, you should see the expected weight on the display and in the serial monitor. 
  */
 
 long  getWeight()
@@ -204,9 +196,8 @@ long  getWeight()
   if (scaleReader.is_ready()) 
   {          
     // set calibration factor  
-    // This value just works fine for m in this demo and 
-    // then it has been usd to get the well know weights. 
-    // calibration factor = getCalibrationFactor()        
+    // You can change this value to get the correct weight for your load cell.    
+    // see getCalibrateFactor() function for more details on how to calculate this factor.  
     scaleReader.set_scale(calibration_factor);
     // get reading from the load cell          
     long gram_reading = scaleReader.get_units();
@@ -218,7 +209,6 @@ long  getWeight()
       {
         Serial.println("Overweight!"); // if the reading is greater than the max scale value, then it is overweight.
         resetDisplay();                // reset the display to show "----"
-        displayScale.display("----");  // display "----" on the display
         Serial.println("Resetting the display to show ----");
         delay(1000);                   // wait for 1 second      
         return 0;                       // overweight 
@@ -230,15 +220,13 @@ long  getWeight()
       }
   } 
   else 
-  {
-    // if the scale is not ready, then return 0
+  {    
     // This means that the scale is not ready to read the weight.
-    // It could be due to a bad connection or the scale is not powered on.
+    // It could be due to a bad connection or the esp32 is not powered on.
     // You can check the connections and power supply to the scale.
     // If the scale is not ready, then return 0.
-    resetDisplay(); // reset display
-    displayScale.display("----"); // display "----" on the display  
-    // print a message to the serial monitor to indicate that the scale is not ready. 
+    resetDisplay();                // reset display
+    // print a message to the serial monitor to indicate that the scale is not ready yet. 
     Serial.println("Scale is not ready yet...");
     // wait for 1 second before returning again. 
     delay(1000); 
@@ -248,29 +236,28 @@ long  getWeight()
 }
 
 /**
- *  This function is used to handle the web socket events.
- * It is called when a client connects, disconnects, or sends a message to the server.  
- * It handles the following events:
- * - WStype_DISCONNECTED: When a client disconnects, it prints a message to the serial monitor. 
- *  - WStype_CONNECTED: When a client connects, it prints a message to the serial monitor.
- * - WStype_TEXT: When a client sends a message to the server, it checks if the message is "Taring the Scale".
- * If it is, it tars the scale and prints a message to the serial monitor.
- * This function is used to communicate between clients and the server using web sockets.
- * It is called by the webSocket.onEvent() function in the setup() function.  
+ * @brief This function is used to handle the web socket events.
+ * @date It is called when a client connects, disconnects, or sends a message to the server.  
+ *       It handles the following events:
+ *       - WStype_DISCONNECTED: When a client disconnects, it prints a message to the serial monitor. 
+ *       - WStype_CONNECTED: When a client connects, it prints a message to the serial monitor.
+ *       - WStype_TEXT: a client sends a message = "Taring the Scale"  to the server, server tares the
+ *                   scale and prints a message to the serial monitor.
+ * @note currently, we assume that we only have one button to tare the scale.
+ *       This function is used to communicate between clients and the server using web sockets.
+ *       It is called by the webSocket.onEvent() function in the setup() function.  
  * 
  * @param num: The client number that sent the message.
  * @param type: The type of event that occurred (WStype_DISCONNECTED, WStype_CONNECTED, or WStype_TEXT).
  * @param payload: The payload of the message sent by the client.
  * @param length: The length of the payload.
  * @note: This function is used to handle web socket events in the ESP32 using the WebSocketsServer library.
- * 
- * @Reference: This task is inspired by the work of [Mo Thunderz](https://www.youtube.com/@MoThunderz).
+ * @reference: This task is inspired by the work of [Mo Thunderz](https://www.youtube.com/@MoThunderz).
  */
 
 void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length) 
 {     
-  // check the type of event that occurred
-  // and handle it accordingly. 
+  // check the type of event that occurred and handle it accordingly. 
   switch (type) {    
     // handle the different types of events
     case WStype_ERROR:          // if there is an error, then type == WStype_ERROR
@@ -284,9 +271,8 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length)
       // optionally you can add code here what to do when connected
       break;
     case WStype_TEXT:                          
-      // Client send request to tare the scale( we assume we only have one button)
+      // a clients sends a request to tare the scale( we assume we only have one button)
       // we could receive different data. 
-      // if the payload is "Taring the Scale", then tare the scale.  
       // if we receive any other data, we can handle it accordingly.
       // This could be the case when we have multiple buttons or actions.                
       Serial.println("Client " + String(num) + "requesting to tare the scale");
@@ -298,14 +284,14 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length)
 
 
 /**
- * This function is used to display the current weight on the 4 digits 7-segment display.
- * It takes the weight value as a parameter and displays it on the display. 
+ * @brief   This function is used to display the current weight on the 4 digits 7-segment display.
+ * @details takes the weight value as a parameter and displays it on the display. 
+ *          It is called when the current weight needs to be displayed on the display.
+ *          It resets the display first to ensure that the display is clear before showing the current weight. 
+ *          It is used to display the current weight on the display in a human-readable format.  
  * @param weightVal: The weight value to be displayed on the display.
- * @note: It is called when the current weight needs to be displayed on the display.
- * It resets the display first to ensure that the display is clear before showing the current weight. 
- * It is used to display the current weight on the display in a human-readable format.  
- * 
- */
+ * @returns: This function does not return any value.
+  */
 void displayWeight(long weightVal)
 {       
     // reset the display first so that we can have a clear display.
@@ -319,12 +305,12 @@ void displayWeight(long weightVal)
 //*********************************************************************************************** Blynk Cloud ******************************
 
 /**
- * This function is used to run the Blynk cloud interaction.
- * It sends the current weight to the Blynk cloud using virtual pins V0 and V1.   
- * It is called every second to update the current weight on the Blynk cloud.
- * 
-* @note: This function is used to send the current weight to the Blynk cloud using virtual pins V0 and V1.
- *  */
+ * @brief function is used to run the Blynk cloud interaction.
+ * @details sends the current weight to the Blynk cloud using virtual pins V0 and V1.   
+ *          It is called every second to update the current weight on the Blynk cloud.
+ * @para This function does not take any parameters.
+ * @returns: This function does not return any value. *  
+ **/
 void runBlynk()
 {
   // send the current weight to the Blynk cloud using virtual pins V0 and V1
@@ -339,13 +325,13 @@ void runBlynk()
 
 //********************************************************************* freeRTOS Tasks ********************************************************
 /**
- * Task1: This task is used to get the current weight from the load cell.
- * It takes the semaphore to ensure that only one task can access the load cell at a time.  
- * It reads the current weight from the load cell and stores it in the currentWeight variable.
- * It releases the semaphore after reading the weight.  
- * * @para: This task does not take any parameters.
+ * @brief: This task is used to get the current weight from the load cell.
+ * @details takes the semaphore to ensure that only one task can access the load cell at a time.  
+ *          It reads the current weight from the load cell and stores it in the currentWeight variable.
+ *          It releases the semaphore after reading the weight.  
+ * @para: This task does not take any parameters.
  * @note: This task runs every 500 milliseconds to get the current weight from the load cell.
- * It is used to ensure that the current weight is updated frequently and accurately.
+ *        It is used to ensure that the current weight is updated frequently and accurately.
  */
 void Task1( void *pvParameters )
 {  
@@ -366,14 +352,14 @@ void Task1( void *pvParameters )
 }
 
 /**
- * Task2: This task is used to display the current weight on the 4 digits 7-segment display.
- * It takes the semaphore to ensure that only one task can access the display at a time.    
- * It reads the current weight from the currentWeight variable and displays it on the display.
- * It releases the semaphore after displaying the weight. 
- * * @para: This task does not take any parameters.
+ * @brief: This task is used to display the current weight on the 4 digits 7-segment display.
+ * @details takes the semaphore to ensure that only one task can access the display at a time.    
+ *          It reads the current weight from the currentWeight variable and displays it on the display.
+ *          It releases the semaphore after displaying the weight. 
+ * @para: This task does not take any parameters.
  * @note: This task runs every second to display the current weight on the display. 
- * It is used to ensure that the current weight is displayed frequently and accurately.
- * The display is reset before displaying the current weight to ensure that the display is clear.   
+ *        It is used to ensure that the current weight is displayed frequently and accurately.
+ *        The display is reset before displaying the current weight to ensure that the display is clear.   
  * 
  * 
  */
@@ -398,14 +384,14 @@ void Task2( void *pvParameters )
 }
 
 /**
- * Task3: This task is used to run the web server.
- * It takes the semaphore to ensure that only one task can access the web server at a time.
- * It handles the web server requests and sends the current weight to the web clients.
- * 
- * * @para: This task does not take any parameters.
- * * @note: This task runs every second to handle the web server requests and send the current weight to the
- *           web clients. It is used to ensure that the web server is running and broadcasting the current 
- *           weight to the clients.
+ * @brief:  This task is used to run the web server.
+ * @details takes the semaphore to ensure that only one task can access the web server at a time.
+ *          It handles the web server requests and sends the current weight to the web clients. * 
+ * @para:   This task does not take any parameters.
+ * @note:   This task runs every second to handle the web server requests and send the current weight to the
+ *          web clients. It is used to ensure that the web server is running and broadcasting the current 
+ *          weight to the clients.
+ * @return: This task does not return any value.
  *  
  * */
 void Task3( void *pvParameters )
@@ -440,19 +426,18 @@ void Task3( void *pvParameters )
 }
 
 /**
- * Task4: This task is used to run the Blynk cloud interaction.
- * It takes the semaphore to ensure that only one task can access the Blynk cloud at a time.      
- * It sends the current weight to the Blynk cloud using virtual pins V0 and V1.
- * It releases the semaphore after sending the weight.  
+ * @brief: This task is used to run the Blynk cloud interaction.
+ * @details takes the semaphore to ensure that only one task can access the Blynk cloud at a time.      
+ *          It sends the current weight to the Blynk cloud using virtual pins V0 and V1.
+ *          It releases the semaphore after sending the weight.  
  * @para: This task does not take any parameters.
  * @note: This task runs every second to send the current weight to the Blynk cloud.
- * It is used to ensure that the current weight is updated frequently and accurately on the Blynk cloud.
- * The Blynk cloud is used to display the current weight over time (5 seconds).     
- * This task requires a Blynk account and a template to be created before using it.
- * You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token.                     
- * 
- * 
- */
+ *        It is used to ensure that the current weight is updated frequently and accurately on the Blynk cloud.
+ *        The Blynk cloud is used to display the current weight over time (5 seconds).     
+ *        This task requires a Blynk account and a template to be created before using it.
+ *        You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token.                     
+ * @return: This task does not return any value.
+ * */
 void Task4(void *pvParameters )
 {   
   while (1)
@@ -479,14 +464,14 @@ void Task4(void *pvParameters )
 //****************************************************************************** Sep up function  *****************************************************************************
 
 /**
- * This function is used to set up the ESP32 and initialize the display, load cell, WiFi connection, web server, and Blynk cloud.
- * It is called once when the ESP32 is powered on or reset.
+ * @brief function is used to set up the ESP32 and initialize the display, load cell, WiFi connection, web server, and Blynk cloud.
+ *        It is called once when the ESP32 is powered on or reset.
  *  
- * @note: This function initializes the display, load cell, WiFi connection, web server, and Blynk cloud.
- * It sets the brightness of the display, initializes the load cell, and sets the calibration factor.
- *  It also creates a semaphore to ensure that only one task can access the shared resource at a time.
- * It starts the web server and web socket, and sets up the Blynk cloud interaction.      
- * * @para: This function does not take any parameters.
+ *@details This function initializes the display, load cell, WiFi connection, web server, and Blynk cloud.
+ *         It sets the brightness of the display, initializes the load cell, and sets the calibration factor.
+ *         It also creates a semaphore to ensure that only one task can access the shared resource at a time.
+ *         It starts the web server and web socket, and sets up the Blynk cloud interaction.      
+ * @para:  This function does not take any parameters.
  * @return: This function does not return any value.  
  */
 void setup() 
@@ -565,7 +550,7 @@ void setup()
   Serial.println("Web socket started on port 81");   // print the web socket started message on the Serial Monitor
   // The webSocket.onEvent(webSocketEvent) function is used to set the event handler for the web socket.
   // This function will be called when a client connects, disconnects, or sends a message to the server.  
-  webSocket.onEvent(webSocketEvent);                  //What needs to be done at the server, where data received back from clients. 
+  
   
   //4- Blynk interaction
   // Blynk is used to send the current weight to the Blynk cloud and display it on the Blynk app.
@@ -603,11 +588,11 @@ void setup()
 //**************************************************************************** main function (loop) *****************************************************
 
 /**
- * This function is the main loop of the ESP32 application.
- * It runs continuously after the setup function is called. 
- * @note: This function handles the web server and web socket events.
- * It calls the server.handleClient() function to handle any client requests to the web server.
- * It also calls the webSocket.loop() function to handle any web socket events.
+ * @brief function is the main loop of the ESP32 application.
+ *  @details  It runs continuously after the setup function is called. 
+ *            This function handles the web server and web socket events.
+ *            It calls the server.handleClient() function to handle any client requests to the web server.
+ *            It also calls the webSocket.loop() function to handle any web socket events.
  * @para: This function does not take any parameters.
  * @return: This function does not return any value.
  * 
