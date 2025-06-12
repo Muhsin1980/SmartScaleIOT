@@ -64,7 +64,7 @@
          git clone https://github.com/Muhsin1980/SmartScaleIOT.git
                            
 ##  Usage
- To use the Smart Scale demo, follow these steps:
+ ## To use the Smart Scale demo, follow these steps:
     - Make sure you add all the libraries shown in the PlatformIO.ini
     - Connect your demo to your PC or Laptop. 
     - Open the PlatformIO (You should be able to use Arduino, if wanted)
