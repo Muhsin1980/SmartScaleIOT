@@ -27,7 +27,6 @@
 #include <WebServer.h>         // needed to create a simple webserver (make sure tools -> board is set to ESP32, otherwise you will get a "WebServer.h: No such file or directory" error)
 #include <WebSocketsServer.h>  // needed for instant communication between client and server through Websockets
 
-
 // Blynk Cloud configuration
 // Blynk Cloud is used to send the current weight to the Blynk cloud and display it on the Blynk app.   
 // You need to create a Blynk account and a template to use this feature.
@@ -37,9 +36,26 @@
 #define BLYNK_TEMPLATE_NAME "Muhsin"
 #define BLYNK_AUTH_TOKEN    "0U5MXMqH_NVYl6XEhvD7EyDtZoQxAXmD"
 #define BLYNK_PRINT Serial
+
 // Include the Blynk library for ESP32
 // @note If I moved this to above, I will get an error.
 #include <BlynkSimpleEsp32.h>  // Blynk library for ESP32. 
+
+// Display circuit wiring
+#define CLK_PIN    48         // GPIO PIN 48 from the ESP32 MCU is connected to the pin CLK of the Display
+#define DIO_PIN    47         // GPIO PIN 47 from the ESP32 MCU is connected to the pin DIO of the Display
+
+// HX711 circuit wiring
+#define DOUT_PIN  21           // GPIO PIN 21 from the ESP32 MCU is connected to the pin DOUT of the HX711
+#define SCK_PIN   20           // GPIO PIN 20 from the ESP32 MCU is connected to the pin SCK  of the HX711
+#define maxScaleValue 5000     // load cell maximum weight is 5k = 5000grams.
+
+// WiFi configuration
+// You need to replace these with your own WiFi network name and password.  
+// This is the WiFi network that the ESP32 will connect to.
+#define AP_NAME  "VM1080293"       // AP name 
+#define AP_PASS "Omidmuhsin2015"  // AP password 
+
 /* 
   The basic HTML page to show the current weight and tare the scale, when needed. 
   The whole html is contained (compressed) in a string variable called "website". 
@@ -62,29 +78,6 @@ String website = "<!DOCTYPE html><html><head><title>SmartScaleMeasuring</title><
 // Web server and web socket configuration 
 WebServer  server(80);                                //  the server uses port 80 (standard port for websites)
 WebSocketsServer webSocket = WebSocketsServer(81);    // the websocket uses port 81 (standard port for websockets
-
-// Display circuit wiring
-#define CLK_PIN    48         // GPIO PIN 48 from the ESP32 MCU is connected to the pin CLK of the Display
-#define maxScaleValue 5000      // load cell maximum weight is 5k = 5000grams.
-#include <BlynkSimpleEsp32.h>  // Blynk in ESP32 
-
-// Display circuit wiring
-#define CLK_PIN    48         // GPIO PIN 48 from the ESP32 MCU is connected to the pin CLK of the Display
-#define DIO_PIN    47         // GPIO PIN 47 from the ESP32 MCU is connected to the pin DIO of the Display
-
-// Load cell max value for measuring the weight. 
-#define maxScaleValue 5000    // load cell maximum weight is 5k = 5000grams.
-#include <BlynkSimpleEsp32.h>  // Blynk in ESP32 
-
-// HX711 circuit wiring
-#define DOUT_PIN  21           // GPIO PIN 21 from the ESP32 MCU is connected to the pin DOUT of the HX711
-#define SCK_PIN   20           // GPIO PIN 20 from the ESP32 MCU is connected to the pin SCK  of the HX711
-
-// WiFi configuration
-// You need to replace these with your own WiFi network name and password.  
-// This is the WiFi network that the ESP32 will connect to.
-#define AP_NAME  "VM1080293"       // AP name 
-#define AP_PASS "Omidmuhsin2015"  // AP password 
 
 // FreeRTOS tasks and semaphore configuration
 // We will create 4 tasks to handle the different functionalities of the application.
@@ -182,7 +175,7 @@ void resetDisplay()
   * @brief  This function is used to get the current weight from the load cell.
   * @details       It checks if the scale is ready, sets the calibration factor, and gets the reading from the load cell. 
   *        If the reading is greater than the maximum scale value or less than or equal to zero, it returns zero.
-  *        If the reading is within the valid range, it returns the reading. 
+  *        If the reading is within the valid range, it returns the reading (in grams). 
   * @para: This function does not take any parameters.
   * @return: The current weight as a long value.
   * @note: This function assumes that the load cell is connected to the ESP32 using the HX711 library.
@@ -316,7 +309,7 @@ void runBlynk()
   // send the current weight to the Blynk cloud using virtual pins V0 and V1
   Serial.println("Sending the current weight to the Blynk cloud");  
   Blynk.virtualWrite(V0,currentWeight);   // send the current weight to the Blynk cloud using virtual pin V0    
-  Blynk.virtualWrite(V1,currentWeight);  // send the current weight to the Blynk cloud using virtual pin V1
+  Blynk.virtualWrite(V1,currentWeight);   // send the current weight to the Blynk cloud using virtual pin V1
   Serial.println("Current weight sent to the Blynk cloud"); 
   //wait for 1 second before sending the next weight. 
   delay(1000); 
@@ -360,9 +353,8 @@ void Task1( void *pvParameters )
  * @note: This task runs every second to display the current weight on the display. 
  *        It is used to ensure that the current weight is displayed frequently and accurately.
  *        The display is reset before displaying the current weight to ensure that the display is clear.   
- * 
- * 
- */
+ * @return: This task does not return any value.
+  */
 void Task2( void *pvParameters )
 {  
    while(1)
@@ -476,16 +468,12 @@ void Task4(void *pvParameters )
  */
 void setup() 
 {
-  // conenct to the available wifi using your AP name and password. 
+  // connect to the available wifi using your AP name and password. 
   // This is done to connect the ESP32 to the WiFi network.
   Serial.println("Connecting to WiFi..."); // print a message to the serial monitor to indicate that the ESP32 is connecting to the WiFi network.
   // WiFi.begin() function is used to connect the ESP32 to the WiFi network.
   WiFi.begin(AP_NAME,AP_PASS);  
-  
-  //Serial initialization (speed = 115200).
-  // This is used to print messages to the serial monitor for debugging purposes.
   // Serial.begin() function is used to initialize the serial communication with the ESP32.
-  // The serial communication is used to print messages to the serial monitor for debugging purposes.
   // The serial communication is initialized with a baud rate of 115200.  
   Serial.begin(115200);   
   
@@ -537,7 +525,6 @@ void setup()
   // start the web server on port 80
   // The web server will serve the HTML page defined in the "website" string variable.
   // The web server will handle any client requests to the root path ("/").
-  // The web socket will handle any client requests to the path "/".  
   server.on("/", []() {                               
   server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
       });
@@ -589,7 +576,7 @@ void setup()
 
 /**
  * @brief function is the main loop of the ESP32 application.
- *  @details  It runs continuously after the setup function is called. 
+ * @details  It runs continuously after the setup function is called. 
  *            This function handles the web server and web socket events.
  *            It calls the server.handleClient() function to handle any client requests to the web server.
  *            It also calls the webSocket.loop() function to handle any web socket events.
