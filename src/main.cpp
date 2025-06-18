@@ -35,8 +35,12 @@
 #define BLYNK_TEMPLATE_ID   "TMPL54GiWGKuC"
 #define BLYNK_TEMPLATE_NAME "Muhsin"
 #define BLYNK_AUTH_TOKEN    "0U5MXMqH_NVYl6XEhvD7EyDtZoQxAXmD"
+/*
+#define BLYNK_TEMPLATE_ID "TMPL5PU2--geM"
+#define BLYNK_TEMPLATE_NAME "Smart Scale Demo"
+#define BLYNK_AUTH_TOKEN "KsoajqCRKWcJSJf3TdZYekqVoZ2NPdNq"
 #define BLYNK_PRINT Serial
-
+*/
 // Include the Blynk library for ESP32
 // @note If I moved this to above, I will get an error.
 #include <BlynkSimpleEsp32.h>  // Blynk library for ESP32. 
@@ -513,7 +517,7 @@ void setup()
     Serial.println("..... Connecting.... \n");
     delay(1000);   
   }  
-    
+
   // This is your local IP address. 
   // You can use this IP address to access the web interface of the ESP32.
   // It will be printed on the Serial Monitor after the ESP32 is connected to the WiFi network.
