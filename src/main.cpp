@@ -26,6 +26,8 @@
 #include <WiFiClient.h>         // WiFiClient library to create a client to connect to the WiFi network
 #include <WebServer.h>         // needed to create a simple webserver (make sure tools -> board is set to ESP32, otherwise you will get a "WebServer.h: No such file or directory" error)
 #include <WebSocketsServer.h>  // needed for instant communication between client and server through Websockets
+#include<ArduinoJson.h>       // ArduinoJson library to handle JSON data.
+
 
 // Blynk Cloud configuration
 // Blynk Cloud is used to send the current weight to the Blynk cloud and display it on the Blynk app.   
@@ -82,9 +84,12 @@ String website = "<!DOCTYPE html><html><head><title>SmartScaleMeasuring</title><
 // Web server and web socket configuration 
 WebServer  server(80);                                //  the server uses port 80 (standard port for websites)
 WebSocketsServer webSocket = WebSocketsServer(81);    // the websocket uses port 81 (standard port for websockets
-
+StaticJsonDocument<200> jsonDoc_tx;                      // JSON document to hold the data to be sent to the Blynk cloud and web server
 // FreeRTOS tasks and semaphore configuration
 // We will create 4 tasks to handle the different functionalities of the application.
+StaticJsonDocument<200> jsonDoc_rx;                     // JSON document to hold the data received from the Blynk cloud and web server
+
+
 TaskHandle_t TaskHandle_1;  // get weight task 
 TaskHandle_t TaskHandle_2;  // display weight task 
 TaskHandle_t TaskHandle_3;  // web server task
@@ -110,7 +115,6 @@ float calibration_factor = -396.99; // Calibration factor to get the well known 
                                     // This number works for me.  You can change this number to 
                                     // get the correct weight for your load cell.                      
                                   
-
 // This variable is used to store the current weight.
  long static  currentWeight = 0; // current weight 
 
@@ -271,10 +275,23 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length)
       // a clients sends a request to tare the scale( we assume we only have one button)
       // we could receive different data. 
       // if we receive any other data, we can handle it accordingly.
-      // This could be the case when we have multiple buttons or actions.                
-      Serial.println("Client " + String(num) + "requesting to tare the scale");
-      scaleReader.tare(); // tare the scale
-      Serial.println("Taring done:)");
+      // This could be the case when we have multiple buttons or actions. 
+      DeserializationError error = deserializeJson(jsonDoc_rx, payload, length); // deserialize the payload to a JSON document               
+      if (error) 
+      {
+        Serial.println("Failed to deserialize JSON: " + String(error.c_str()));
+        return; // exit the function if there is an error
+      }   
+      else
+      {
+        // print the received JSON document to the serial monitor for debugging purposes.
+        const char *str = jsonDoc_rx["rand"]; // get the message from the JSON document
+        Serial.println("Received JSON: " + String(str[0]));
+        Serial.println("Client " + String(num) + "requesting to tare the scale");
+        scaleReader.tare(); // tare the scale
+        Serial.println("Taring done:)");
+      }
+     
       break;
   }
 }
@@ -402,17 +419,17 @@ void Task3( void *pvParameters )
     xSemaphoreTake(semaphore,portMAX_DELAY);
     // convert the current weight to a string and send it to the web clients.
     // This is done to update the current weight on the web interface.
-    // Note: This is not the best way to convert the current weight to a string,
-    // but it is a simple way to do it.
-    // for better performance, you can use a buffer to store the string and then send it to the web clients.
-    // This is done to ensure that the web clients receive the current weight in a string format.
-    String str = String(currentWeight);     // get the current weight
-    int str_len = str.length() + 1;         // convert this number into an array of chars.           
-    char char_array[str_len];       
-    //send the current weight to the web clients
-    // The current weight is converted to a char array and sent to the web clients.    
-    str.toCharArray(char_array, str_len);   // convert to char array
-    webSocket.broadcastTXT(char_array);     // send char_array to clients(broadcast). 
+    
+    String jsonString = ""; 
+    // create a JSON object to hold the current weight
+
+    JsonObject object = jsonDoc_tx.to<JsonObject>(); // create a JSON object
+    object["weight"] = currentWeight;               // add the current weight to the JSON object  
+
+    // serialize the JSON object to a string
+    serializeJson(jsonDoc_tx, jsonString);              // convert the JSON object to a string
+    // send the JSON string to the web clients.     
+    webSocket.broadcastTXT(jsonString);     // send char_array to clients(broadcast). 
     // give the semaphore to allow other tasks to access the shared resource.
     Serial.println("Task3: Web server is running and broadcasting the current weight to the clients");
     xSemaphoreGive(semaphore);  //releasing the semaphore. 
@@ -504,6 +521,10 @@ void setup()
   scaleReader.tare();         
 
   // create a new semaphpre and check if it has been created.
+  // The semaphore is used to ensure that only one task can access the shared resource (load cell and display) at a time.
+  // This is done to avoid any conflicts between the tasks that access the shared resource.
+  Serial.println("Creating a semaphore to handle shared resources");
+  // create a mutex semaphore to handle shared resources
   semaphore = xSemaphoreCreateMutex();
   if (semaphore == NULL)
   {
