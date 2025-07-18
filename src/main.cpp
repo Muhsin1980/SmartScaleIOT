@@ -79,23 +79,27 @@
   the current weight over time. However, as this is a simple demo, I decided to use a simple HTML page to show the 
   current weight and tare the scale.
   */
-String website = "<!DOCTYPE html><html><head><title>SmartScaleMeasuring</title></head><body style='background-color: #EEEEEE;'><span style='color: #003366;'><h1>Displaying the Current Weight</h1><p>The current Weight is: <span id='rand'>-</span></p><p><button type='button' id='BTN_SEND_BACK'>Taring the Scale (Zeroing the Scale)</button></p></span></body><script> var Socket; document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back); function init() { Socket = new WebSocket('ws://' + window.location.hostname + ':81/'); Socket.onmessage = function(event) { processCommand(event); }; } function button_send_back() { Socket.send('Taring the Scale'); } function processCommand(event) { document.getElementById('rand').innerHTML = event.data; console.log(event.data); } window.onload = function(event) { init(); }</script></html>";
+String website = "<!DOCTYPE html><html><head><title> SmartScaleMeasuring</title></head><body style='background-color: #EEEEEE;'><span style='color: #003366;'> <h1>Current Weight</h1> <p>The current Weight is: <span id='weight'>-</span></p> <h1>Current Tempreture</h1> <p>The current Tempreture is: <span id='tempreture'>-</span></p> <h1>Current Humidity</h1> <p>The current Humidity is: <span id='humidity'>-</span></p> <p><button type='button' id='Send_Info'>Send_Info</button></p> <p><button type='button' id='Tare_Scale'>Tare the Scale</button></p> </span></body><script> var Socket; document.getElementById('Tare_Scale').addEventListener('click', Tare_Scale_send_back); document.getElementById('Send_Info').addEventListener('click', Send_Info); function Tare_Scale_send_back() { if (Socket.readyState === WebSocket.OPEN) { Socket.send(\"Tare the Scale\"); } else { console.log('WebSocket is not open. Ready state: ' + Socket.readyState); alert('WebSocket is not open. Please try again later.'); return;} } function Send_Info() { var info = { 'brand' : 'Gibson', 'type' : 'Les Paul Studio', 'year' : 2010, 'color' : 'white' }; if (Socket.readyState === WebSocket.OPEN) { Socket.send(JSON.stringify(info)); } else { console.log('WebSocket is not open. Ready state: ' + Socket.readyState); alert('WebSocket is not open. Please try again later.'); return;} }function init() { Socket = new WebSocket('ws://' + window.location.hostname + ':81/'); Socket.onmessage = function(event) { processCommand(event); }; } function processCommand(event) { var obj = JSON.parse(event.data); document.getElementById('weight').innerHTML = obj.weight; console.log(obj.weight); document.getElementById('humidity').innerHTML = obj.humidity; console.log(obj.humidity); document.getElementById('tempreture').innerHTML = obj.tempreture; console.log(obj.tempreture); } window.onload = function(event) { init(); } </script> </html>";
 
 // Web server and web socket configuration 
 WebServer  server(80);                                //  the server uses port 80 (standard port for websites)
 WebSocketsServer webSocket = WebSocketsServer(81);    // the websocket uses port 81 (standard port for websockets
-StaticJsonDocument<200> jsonDoc_tx;                      // JSON document to hold the data to be sent to the Blynk cloud and web server
+JsonDocument jsonDoc_tx;                   // JSON document to hold the data to be sent to the Blynk cloud and web server
 // FreeRTOS tasks and semaphore configuration
 // We will create 4 tasks to handle the different functionalities of the application.
-StaticJsonDocument<200> jsonDoc_rx;                     // JSON document to hold the data received from the Blynk cloud and web server
+JsonDocument jsonDoc_rx;                  // JSON document to hold the data received from the Blynk cloud and web server
 
-
+// FreeRTOS task handles and semaphore
+// We will create 4 tasks to handle the different functionalities of the application.
+// The tasks will be used to get the weight from the load cell, display the weight on 
+// the 4 digits 7-segment display, handle the web server, and handle the Blynk cloud interaction.
 TaskHandle_t TaskHandle_1;  // get weight task 
 TaskHandle_t TaskHandle_2;  // display weight task 
 TaskHandle_t TaskHandle_3;  // web server task
-TaskHandle_t TaskHandle_4;  // Blyn Task
-SemaphoreHandle_t semaphore; 
-const int shared_resource = 3; 
+TaskHandle_t TaskHandle_4;  // Blyn ask
+SemaphoreHandle_t semaphore; // semaphore to handle shared resources
+const int shared_resource = 3; // shared resource to be accessed by the tasks
+
 
 // HX711 scale reader object
 // Defining a scale reader object to read the load cell
@@ -109,7 +113,9 @@ HX711 scaleReader;
 BlynkTimer timer;
 
 // Calibration factor for the load cell
-// This numbr is used to convert the raw reading from the load cell to the actual weight.
+// This is the calibration factor for the load cell.
+// This numbr (factor) is used to convert the raw reading from the load cell to the actual weight.
+// You can change this number to get the correct weight for your load cell.
 // See the getCalibrateFactor() function for more details on how to calculate this factor.
 float calibration_factor = -396.99; // Calibration factor to get the well known weight 
                                     // This number works for me.  You can change this number to 
@@ -166,8 +172,7 @@ float getCalibrateFactor()
 
 
 /**
- * @brief function is used to reset the display to show "----".
- *          It is called when the display needs to be cleared or reset.  
+ * @brief  This function is used to reset the display to show "----" on the 4 digits 7-segment display.
  * @para: This function does not take any parameters.
  * @note: This function is used to reset the display to show "----" on the 4 digits 7-segment display.
  *        It is called when the display needs to be cleared or reset.
@@ -178,6 +183,7 @@ void resetDisplay()
     // This function is used to reset the display to show "----"
     displayScale.display("----"); 
 }
+
 
 /**
   * @brief  This function is used to get the current weight from the load cell.
@@ -285,6 +291,9 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length)
       else
       {
         // print the received JSON document to the serial monitor for debugging purposes.
+        // here more actions can be added to handle different requests from the client.
+        // for example, we can add more buttons to the web page and handle their requests here.
+        
         const char *str = jsonDoc_rx["rand"]; // get the message from the JSON document
         Serial.println("Received JSON: " + String(str[0]));
         Serial.println("Client " + String(num) + "requesting to tare the scale");
@@ -319,7 +328,7 @@ void displayWeight(long weightVal)
 //*********************************************************************************************** Blynk Cloud ******************************
 
 /**
- * @brief function is used to run the Blynk cloud interaction.
+ * @brief This function is used to run the Blynk cloud interaction.
  * @details sends the current weight to the Blynk cloud using virtual pins V0 and V1.   
  *          It is called every second to update the current weight on the Blynk cloud.
  * @para This function does not take any parameters.
@@ -328,6 +337,7 @@ void displayWeight(long weightVal)
 void runBlynk()
 {
   // send the current weight to the Blynk cloud using virtual pins V0 and V1
+  // you can change the virtual pins to any other virtual pins you want to use.
   Serial.println("Sending the current weight to the Blynk cloud");  
   Blynk.virtualWrite(V0,currentWeight);   // send the current weight to the Blynk cloud using virtual pin V0    
   Blynk.virtualWrite(V1,currentWeight);   // send the current weight to the Blynk cloud using virtual pin V1
@@ -425,7 +435,9 @@ void Task3( void *pvParameters )
 
     JsonObject object = jsonDoc_tx.to<JsonObject>(); // create a JSON object
     object["weight"] = currentWeight;               // add the current weight to the JSON object  
-
+    object["humidity"] = random(50, 100); // add a random humidity value to the JSON object
+    object["tempreture"] = random(20, 30); // add a random
+      
     // serialize the JSON object to a string
     serializeJson(jsonDoc_tx, jsonString);              // convert the JSON object to a string
     // send the JSON string to the web clients.     
@@ -470,6 +482,30 @@ void Task4(void *pvParameters )
     // wait for 1 second before running the Blynk cloud interaction again.
     vTaskDelay((1000/ portTICK_PERIOD_MS)); // run per (n) second.
   }
+}
+
+/**
+ * @brief This function is used to handle the 404 Not Found error.
+ * @details It is called when a client requests a path that does not exist on the server.
+ *          It sends a 404 Not Found response to the client with a plain text message.  
+ * @param This function does not take any parameters.
+ * @return This function does not return any value. 
+ * 
+ *  */
+void handleNotFound() {
+  server.send(404, "text/plain", "404: Not found");
+}
+/**
+ * @brief This function is used to handle the root path ("/") request.
+ * @details It sends a 200 OK response to the client with the HTML page defined in the "website" string variable.
+ *         It is called when a client requests the root path ("/") of the server.
+ *       It sends the HTML page to the client with a content type of "text/html".
+ * @param This function does not take any parameters.
+ * @return This function does not return any value.
+ *  */
+void handleRoot() 
+{
+  server.send(200, "text/html", "webPage.html"); // send the HTML page to the client
 }
 
 
@@ -538,7 +574,8 @@ void setup()
     Serial.println("..... Connecting.... \n");
     delay(1000);   
   }  
-
+   
+  // wait until the ESP32 is connected to the WiFi network.
   // This is your local IP address. 
   // You can use this IP address to access the web interface of the ESP32.
   // It will be printed on the Serial Monitor after the ESP32 is connected to the WiFi network.
@@ -550,9 +587,22 @@ void setup()
   // start the web server on port 80
   // The web server will serve the HTML page defined in the "website" string variable.
   // The web server will handle any client requests to the root path ("/").
-  server.on("/", []() {                               
-  server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
-      });
+  //server.on("/", []() {                               
+  //server.send(200, "text/html", website);              //  send out the HTML string "webpage" to the client
+    //  });
+
+                             
+     Serial.println("Client requested the root path");
+     // send the HTML page to the client when the root path is requested.
+     // The HTML page is defined in the "website" string variable.
+     // The server.send() function sends the HTML page to the client.
+     // The first parameter is the HTTP status code (200 means OK).
+     // The second parameter is the content type (text/html means that the content is HTML).
+     // The third parameter is the HTML page to be sent to the client.                             
+    
+     server.on("/", handleRoot);     
+     server.onNotFound(handleNotFound);             
+     
   
   server.begin();   
   Serial.println("Web server started on port 80"); // print the web server started message on the Serial Monitor                                 
@@ -568,7 +618,7 @@ void setup()
   // Blynk is used to send the current weight to the Blynk cloud and display it on the Blynk app.
   Serial.println("Starting Blynk Cloud");     
   // Blynk.begin() function is used to start the Blynk cloud interaction.
-  // You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token.   
+  // You need to replace the BLYNK_AUTH_TOKEN with your own Blynk authentication token defined above.   
   // You can get the BLYNK_AUTH_TOKEN from the Blynk app after creating a template.
   // Blynk.begin() function takes the BLYNK_AUTH_TOKEN, AP_NAME, and AP_PASS as parameters.       
   // Blynk.begin() function will connect the ESP32 to the Blynk cloud and start the Blynk cloud interaction.
@@ -594,8 +644,12 @@ void setup()
   // Blynk cloud interaction is commented out. You can uncomment it to use it.
 
   // Starting the demo and run the tasks.
+  // The tasks will run concurrently and handle the different functionalities of the application.
+  Serial.println("Tasks created successfully"); 
   Serial.println("....Starting the demo .... \n");  
 }
+
+
 
 //**************************************************************************** main function (loop) *****************************************************
 
@@ -617,6 +671,6 @@ void loop()
   // It calls the server.handleClient() function to handle any client requests to the web server.
   // It also calls the webSocket.loop() function to handle any web socket events. 
   server.handleClient();  // webserver methode that handles all Client
-  webSocket.loop();   
+  webSocket.loop();      
 }
 // This is the end of the main function (loop) and the end of the program.

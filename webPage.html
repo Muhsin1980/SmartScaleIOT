@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head><title> SmartScaleMeasuring</title></head>
+<body style='background-color: #EEEEEE;'>
+<span style='color: #003366;'>
+    <h1>Current Weight</h1>
+    <p>The current Weight is: <span id='weight'>-</span></p>
+    <h1>Current Tempreture</h1>
+    <p>The current Tempreture is: <span id='tempreture'>-</span></p>
+    <h1>Current Humidity</h1>
+    <p>The current Humidity is: <span id='humidity'>-</span></p>
+    
+    <p><button type='button' id='Send_Info'>Send_Info</button></p>
+    <p><button type='button' id='Tare_Scale_send_back'>Tare the Scale</button></p>
+    </span>
+</body>
+
+<script> 
+var Socket; 
+document.getElementById('weight').addEventListener('click', Tare_Scale_send_back); 
+document.getElementById('humidity').addEventListener('click', Send_Info); 
+
+function Tare_Scale_send_back() 
+{  
+    
+    if (Socket.readyState === WebSocket.OPEN) {
+        Socket.send("Tare the Scale");
+    } else {
+        console.log('WebSocket is not open. Ready state: ' + Socket.readyState);
+        alert('WebSocket is not open. Please try again later.');
+        return;
+}    
+}           
+function Send_Info() 
+{   
+    var info = {
+   
+    'brand' : 'Gibson',
+    'type' : 'Les Paul Studio',     
+    'year' :  2010,
+    'color' : 'white'    
+};
+    if (Socket.readyState === WebSocket.OPEN) {
+        Socket.send(JSON.stringify(info));
+    } else {
+        console.log('WebSocket is not open. Ready state: ' + Socket.readyState);
+        alert('WebSocket is not open. Please try again later.');
+        return;
+}    
+}
+function init() { Socket = new WebSocket('ws://' + window.location.hostname + ':81/'); 
+Socket.onmessage = function(event) { processCommand(event); }; } 
+
+
+function processCommand(event) 
+{   
+    var obj = JSON.parse(event.data);
+    document.getElementById('weight').innerHTML = obj.weight; 
+    console.log(obj.weight);
+    document.getElementById('humidity').innerHTML = obj.humidity; 
+    console.log(obj.humidity);
+    document.getElementById('tempreture').innerHTML = obj.tempreture; 
+    console.log(obj.tempreture);
+ } 
+    window.onload = function(event) { init(); 
+           }
+    </script>
+    </html>
